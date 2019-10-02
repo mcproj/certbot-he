@@ -49,6 +49,14 @@ HELP
   exit 1
 fi
 
+## Source Auth parameters from configuration file if exists ############
+
+if [ -f "$PWD/certbot-he-hook.conf" ]; then
+  source $PWD/certbot-he-hook.conf
+elif [ -f "/etc/certbot-he-hook.conf" ]; then
+  source /etc/certbot-he-hook.conf
+fi
+
 
 ## Auth parameters for curl ############################################
 
