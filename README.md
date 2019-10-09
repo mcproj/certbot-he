@@ -40,7 +40,29 @@ Wildcard = True
 
 2. Copy `certbot-he` somewhere in your path (`/usr/bin` or `usr/local/bin`) or make sure `certbotHe` point to it.
 
-3. Create your certificate with `certbot-he certonly`.
+3. Create your certificate with `certbot-he certonly`. Add any options you need:
+
+```
+Usage: certbot-he <COMMANDS> [OPTIONS]
+
+certbot-he can obtain HTTPS/TLS/SSL certificates. It will use
+certbot-he-hook for obtaining certificate. COMMANDS and OPTIONS are:
+
+  certonly              Obtain or renew a certificate, but do not install it
+  renew                 Renew all previously obtained certificates that are near expiry
+
+  -t --test-cert        Obtain a test certificate from a staging server
+  -d, --dry-run         Test "renew" or "certonly" without saving any certificates to disk
+  -e, --expand          Expand and replace an existing certificate
+  -a, --agree-tos       Agree to the ACME server's Subscriber Agreement
+
+  -h, --help            Show this help screen
+  -v, --version         Show version information
+
+Configuration file is : /etc/certbot-he.conf
+
+Help and support: <https://github.com/EddyBeaupre/certbot-he>
+```
 
 4. Add a cron job to update your certificate (`/etc/crowntab` or any other way you like).
 
