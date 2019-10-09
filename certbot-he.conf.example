@@ -1,0 +1,32 @@
+[DEFAULT]
+;username and password are needed to create and delete TXT records.
+UserName = <dns.he.net username>
+Password = <dns.he.net password>
+; Email address is used by Let's Encrypt for important account notifications
+Email = <your email>
+; RSA Key Size of the cerficate
+KeySize = 4096
+; If certbot is not in the system's path, specify it's location
+#certbot = /usr/bin/certbot
+; If certbot-he is not in the system's path, specify it's location
+#certbotHe = /usr/local/bin/certbot-he
+; Run a command after updating your certificate to do wathever cleanup you need.
+#postHook = /bin/systemctl reload apache2
+
+; You can have as many domain section as you want. The first domain will
+; also be the certificate name.
+[domain.com]
+; Request a certificate for this domain.
+Domain = True
+; Request a wildcard certificate for this domain.
+Wildcard = True
+
+; certbot/let's encrypt won't let you create a certificate for a domain that
+; is already included in the base domain (in this case, subdomain.domain.com
+; is already covered by *.domain.com, but you still can a wildcard for
+; *.subdomain.domain.com
+[subdomain.domain.com]
+; Do not request a certificate for this subdomain
+Domain = False
+; But request a wildcard certificate for it.
+Wildcard = True
