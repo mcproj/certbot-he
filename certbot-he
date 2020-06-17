@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+#!/usr/bin/env python3.6
 
 import os
 import re
@@ -16,14 +16,11 @@ class certbotHook:
     def getSession(self, userName, password):
         try:
             logging.info('Requesting session Id')
-            sessionId = None
             session = requests.Session()
             if session.get('https://dns.he.net/'):
-                sessionId=session.cookies.get_dict()['CGISESSID']
-                data = {'email':userName, 'pass':password}
-                cookie = {'CGISESSID':sessionId}
+                data = {'email':userName, 'pass':password, 'submit':'Login!'}
                 logging.info('Connecting to dns.he.net with username ' + userName)
-                request = requests.post('https://dns.he.net/', data=data, cookies=cookie)
+                request = requests.post('https://dns.he.net/', data=data, cookies=session.cookies)
                 if request:
                     zoneList = []
                     logging.info('Extracting zone list')
@@ -35,7 +32,7 @@ class certbotHook:
                     if len(zoneList) == 0:
                         logging.error('No zone found')
                         return None, None
-                    return sessionId, sorted(zoneList, key=lambda i: len(i['name']), reverse=True)
+                    return session.cookies, sorted(zoneList, key=lambda i: len(i['name']), reverse=True)
             logging.error('Login was unsuccessful')
             return None, None
         except:
@@ -56,12 +53,11 @@ class certbotHook:
             logging.exception('An exception occured')
             return None
     
-    def addRecordTxt(self, sessionId, zoneId, recordName, recordData, recordTtl=300):
+    def addRecordTxt(self, cookie, zoneId, recordName, recordData, recordTtl=300):
         try:
             logging.info('Adding TXT record ' +  recordName + ' with value "' + recordData + '"')
             data = { 'account': '', 'menu': 'edit_zone', 'Type': 'TXT', 'hosted_dns_zoneid': zoneId, 'hosted_dns_recordid': '', 'hosted_dns_editzone': 1, 'Priority': '', 'Name': recordName, 'Content': recordData, 'TTL': recordTtl, 'hosted_dns_editrecord': 'Submit'}
-            cookie = {'CGISESSID':sessionId}
-            request = requests.post('https://dns.he.net/', data=data, cookies=cookie)
+            request = requests.post('https://dns.he.net/?hosted_dns_zoneid=' + zoneId + '&menu=edit_zone&hosted_dns_editzone', data=data, cookies=cookie)
             if request:
                 recordId =[]
                 for line in re.findall("\('[0-9]+",'\n'.join(re.findall("deleteRecord\('.*','" + recordName + "','TXT'\)", request.text))):
@@ -77,12 +73,11 @@ class certbotHook:
             logging.exception('An exception occured')
             return None
     
-    def delRecord(self, sessionId, zoneId, recordId):
+    def delRecord(self, cookie, zoneId, recordId):
         try:
             logging.info('Deleting TXT record id ' +  recordId + ' from zone id ' + zoneId)
             data = { 'menu': 'edit_zone', 'hosted_dns_zoneid': zoneId, 'hosted_dns_recordid': recordId, 'hosted_dns_editzone': 1, 'hosted_dns_delrecord': 1, 'hosted_dns_delconfirm': 'delete' }
-            cookie = {'CGISESSID':sessionId}
-            request = requests.post('https://dns.he.net/', data=data, cookies=cookie)
+            request = requests.post('https://dns.he.net/index.cgi', data=data, cookies=cookie)
             if request:
                 for line in re.findall('<div id="dns_status" onClick="hideThis\(this\);">Successfully removed record.</div>', request.text):
                     logging.info('TXT record ' +  recordId + ' of zone id ' + zoneId + ' deleted')
@@ -93,22 +88,32 @@ class certbotHook:
             logging.exception('An exception occured')
             return False
 
+    def logOut(self, cookie):
+        try:
+            logging.info('Destroying session')
+            request = requests.get('https://dns.he.net/?action=logout', cookies=cookie)
+            return True
+        except:
+            logging.exception('An exception occured')
+            return False
+
     def __init__(self, config, domainName, domainValidation, domainAuthOutput):
         try:
             recordName = '_acme-challenge.' + domainName.replace('*.','')
-            sessionId, zoneList = self.getSession(config['DEFAULT']['UserName'], config['DEFAULT']['Password'])
-            if sessionId:
+            cookie, zoneList = self.getSession(config['DEFAULT']['UserName'], config['DEFAULT']['Password'])
+            if cookie:
                 zoneId = self.findZoneId(domainName, zoneList)
                 if zoneId:
                     if domainAuthOutput == None:
-                        recordId = self.addRecordTxt(sessionId, zoneId, recordName, domainValidation)
+                        recordId = self.addRecordTxt(cookie, zoneId, recordName, domainValidation)
                         print(recordId)
                     else:
-                        self.delRecord(sessionId, zoneId, domainAuthOutput)
+                        self.delRecord(cookie, zoneId, domainAuthOutput)
+                    self.logOut(cookie)
                 else:
                     logging.error('Could not find zoneId for domain ' + domainName + '. Please check your configuration')
             else:
-                logging.error('Could get a sessionID. Please check your username and password.')
+                logging.error('Could not get session cookie. Please check your username and password.')
         except:
             logging.exception('An exception occured')
 
@@ -179,6 +184,8 @@ class certbot:
             if testCert:
                 logging.info('with option: --test-cert')
                 cmd += ['--test-cert']
+                if config['DEFAULT']['Email'] != None:
+                    cmd += ['--email', config['DEFAULT']['Email']]
             if dryRun:
                 logging.info('with option: --dry-run')
                 cmd += ['--dry-run']
@@ -227,7 +234,8 @@ def usage(cfgFile):
         print('certbot-he-hook for obtaining certificate. COMMANDS and OPTIONS are:\n')
         print('  certonly              Obtain or renew a certificate, but do not install it')
         print('  renew                 Renew all previously obtained certificates that are near expiry\n')
-        print('  -t --test-cert        Obtain a test certificate from a staging server')
+        print('  -c, --config FILE     Specify configuration file path')
+        print('  -t, --test-cert       Obtain a test certificate from a staging server')
         print('  -d, --dry-run         Test "renew" or "certonly" without saving any certificates to disk')
         print('  -e, --expand          Expand and replace an existing certificate')
         print('  -a, --agree-tos       Agree to the ACME server\'s Subscriber Agreement\n')
@@ -240,7 +248,7 @@ def usage(cfgFile):
 
 def version():
     try:
-        print(os.path.basename(__file__) + ' version 0.20.0')
+        print(os.path.basename(__file__) + ' version 0.20.1')
         print('Copyright (C) 2019 Eddy Beaupre.')
         print('License MIT: The MIT Licence <https://opensource.org/licenses/MIT>.')
         print('This is free software: you are free to change and redistribute it.')
@@ -263,15 +271,57 @@ def main(argv):
 
     try:
         logging.info("initializing")
-        configFile = "/etc/" + scriptName + ".conf"
+        configFile = readEnviron('CERTBOT_HE_CONFIG_FILE')
+        if configFile == None:
+            configFile = "/etc/" + scriptName + ".conf"
+
+        showUsage = False
+        showVersion = False
+        certMode = 0
+        testCert = False
+        dryRun = False
+        agreeTos = False
+        expandCert = False
+
+        opts, args = getopt.gnu_getopt(argv, "c:htdaev", ['config=', 'help', 'test-cert', 'dry-run', 'agree-tos', 'expand', 'version'])
+            
+        for opt, arg in opts:
+            if opt in ('-c', '--config'):
+                logging.info('Found option: --config')
+                configFile = arg
+            elif opt in ('-h', '--help'):
+                showUsage = True
+            elif opt in ('-v', '--version'):
+                showVersion = True
+            elif opt in ('-t', '--test-cert'):
+                logging.info('Found option: --test-cert')
+                testCert = True
+            elif opt in ('-d', '--dry-run'):
+                logging.info('Found option: --dry-run')
+                dryRun = True
+            elif opt in ('-a', '--agree-tos'):
+                logging.info('Found option: --agree-tos')
+                agreeTos = True
+            elif opt in ('-e', '--expand'):
+                logging.info('Found option: --expand')
+                expandCert = True
+
+        if showUsage == True:
+            usage(configFile)
+        if showVersion == True:
+            version()
+        if showUsage == True or showVersion == True:
+            return os.EX_USAGE
 
         if not os.path.isfile(configFile):
             logging.error('Configuration file ' + configFile + ' not found')
         else:
             logging.info('Reading configuration file ' + configFile)
-            config = configparser.ConfigParser()
+            config = configparser.ConfigParser(allow_no_value=True)
             config.sections()
             config.read(configFile)
+            
+            os.environ['CERTBOT_HE_CONFIG_FILE'] = configFile
             
             domainName = readEnviron('CERTBOT_DOMAIN')
             domainValidation = readEnviron('CERTBOT_VALIDATION')
@@ -280,34 +330,6 @@ def main(argv):
             if domainName or domainValidation:
                 cbh = certbotHook(config, domainName, domainValidation, domainAuthOutput)
             else:
-                certMode = 0
-                testCert = False
-                dryRun = False
-                agreeTos = False
-                expandCert = False
-
-                opts, args = getopt.gnu_getopt(argv, "htdaev", ['help', 'test-cert', 'dry-run', 'agree-tos', 'expand', 'version'])
-                    
-                for opt, arg in opts:
-                    if opt in ('-h', '--help'):
-                        usage(configFile)
-                        return os.EX_USAGE
-                    elif opt in ('-v', '--version'):
-                        version()
-                        return os.EX_USAGE
-                    elif opt in ('-t', '--test-cert'):
-                        logging.info('Found option: --test-cert')
-                        testCert = True
-                    elif opt in ('-d', '--dry-run'):
-                        logging.info('Found option: --dry-run')
-                        dryRun = True
-                    elif opt in ('-a', '--agree-tos'):
-                        logging.info('Found option: --agree-tos')
-                        agreeTos = True
-                    elif opt in ('-e', '--expand'):
-                        logging.info('Found option: --expand')
-                        expandCert = True
-
                 for arg in args:
                     if arg.startswith('c') and arg in ('certonly'):
                         if certMode == 0:
