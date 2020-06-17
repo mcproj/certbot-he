@@ -50,8 +50,8 @@ certbot-he-hook for obtaining certificate. COMMANDS and OPTIONS are:
 
   certonly              Obtain or renew a certificate, but do not install it
   renew                 Renew all previously obtained certificates that are near expiry
-
-  -t --test-cert        Obtain a test certificate from a staging server
+  -c, --config FILE     Specify configuration file path
+  -t, --test-cert       Obtain a test certificate from a staging server
   -d, --dry-run         Test "renew" or "certonly" without saving any certificates to disk
   -e, --expand          Expand and replace an existing certificate
   -a, --agree-tos       Agree to the ACME server's Subscriber Agreement
